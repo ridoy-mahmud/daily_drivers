@@ -1,6 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/api/bookmarks/:id", "destination": "/api" },
-    { "source": "/api/bookmarks", "destination": "/api" }
-  ]
-}
