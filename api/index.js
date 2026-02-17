@@ -131,9 +131,10 @@ async function ensureSeeded(col) {
 }
 
 // ─── Routes ──────────────────────────────────────────────────────
+// Handle both /api/bookmarks and /bookmarks (Vercel may strip /api prefix)
 
 // GET all bookmarks
-app.get("/api/bookmarks", async (req, res) => {
+async function getBookmarks(req, res) {
   try {
     const db = await getDb();
     const col = db.collection("bookmarks");
@@ -141,13 +142,15 @@ app.get("/api/bookmarks", async (req, res) => {
     const bookmarks = await col.find({}).toArray();
     res.json(bookmarks);
   } catch (err) {
-    console.error("GET /api/bookmarks error:", err);
+    console.error("GET bookmarks error:", err);
     res.status(500).json({ error: err.message });
   }
-});
+}
+app.get("/api/bookmarks", getBookmarks);
+app.get("/bookmarks", getBookmarks);
 
 // POST create bookmark
-app.post("/api/bookmarks", async (req, res) => {
+async function postBookmark(req, res) {
   try {
     const { name, url, description, logo } = req.body;
     if (!name || !url)
@@ -161,10 +164,12 @@ app.post("/api/bookmarks", async (req, res) => {
     console.error("POST error:", err);
     res.status(500).json({ error: err.message });
   }
-});
+}
+app.post("/api/bookmarks", postBookmark);
+app.post("/bookmarks", postBookmark);
 
 // PUT update bookmark
-app.put("/api/bookmarks/:id", async (req, res) => {
+async function putBookmark(req, res) {
   try {
     const { id } = req.params;
     const { name, url, description, logo } = req.body;
@@ -188,10 +193,12 @@ app.put("/api/bookmarks/:id", async (req, res) => {
     console.error("PUT error:", err);
     res.status(500).json({ error: err.message });
   }
-});
+}
+app.put("/api/bookmarks/:id", putBookmark);
+app.put("/bookmarks/:id", putBookmark);
 
 // DELETE bookmark
-app.delete("/api/bookmarks/:id", async (req, res) => {
+async function deleteBookmarkHandler(req, res) {
   try {
     const { id } = req.params;
     const db = await getDb();
@@ -204,6 +211,20 @@ app.delete("/api/bookmarks/:id", async (req, res) => {
     console.error("DELETE error:", err);
     res.status(500).json({ error: err.message });
   }
+}
+app.delete("/api/bookmarks/:id", deleteBookmarkHandler);
+app.delete("/bookmarks/:id", deleteBookmarkHandler);
+
+// Debug: catch-all to show what path Express actually receives
+app.all("*", (req, res) => {
+  res.status(404).json({
+    debug: true,
+    message: "Route not matched",
+    path: req.path,
+    method: req.method,
+    url: req.url,
+    originalUrl: req.originalUrl,
+  });
 });
 
 // Export for Vercel serverless
