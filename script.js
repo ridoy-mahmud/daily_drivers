@@ -4,26 +4,26 @@
  * Dark mode preference stays in localStorage (client-side only).
  */
 
-const API_BASE = '/api/bookmarks';
+const API_BASE = "/api/bookmarks";
 
 // ─── DOM References ──────────────────────────────────────────────
-const bookmarksGrid  = document.getElementById('bookmarksGrid');
-const emptyState     = document.getElementById('emptyState');
-const searchInput    = document.getElementById('searchInput');
-const modal          = document.getElementById('modal');
-const modalContent   = document.getElementById('modalContent');
-const modalTitle     = document.getElementById('modalTitle');
-const openModalBtn   = document.getElementById('openModalBtn');
-const closeModalBtn  = document.getElementById('closeModalBtn');
-const bookmarkForm   = document.getElementById('bookmarkForm');
-const editIdField    = document.getElementById('editId');
-const submitBtnText  = document.getElementById('submitBtnText');
-const darkModeToggle = document.getElementById('darkModeToggle');
-const sunIcon        = document.getElementById('sunIcon');
-const moonIcon       = document.getElementById('moonIcon');
+const bookmarksGrid = document.getElementById("bookmarksGrid");
+const emptyState = document.getElementById("emptyState");
+const searchInput = document.getElementById("searchInput");
+const modal = document.getElementById("modal");
+const modalContent = document.getElementById("modalContent");
+const modalTitle = document.getElementById("modalTitle");
+const openModalBtn = document.getElementById("openModalBtn");
+const closeModalBtn = document.getElementById("closeModalBtn");
+const bookmarkForm = document.getElementById("bookmarkForm");
+const editIdField = document.getElementById("editId");
+const submitBtnText = document.getElementById("submitBtnText");
+const darkModeToggle = document.getElementById("darkModeToggle");
+const sunIcon = document.getElementById("sunIcon");
+const moonIcon = document.getElementById("moonIcon");
 
 // ─── State ───────────────────────────────────────────────────────
-const THEME_KEY = 'toolvault_theme';
+const THEME_KEY = "toolvault_theme";
 let cachedBookmarks = []; // Local cache to avoid API calls on every search keystroke
 
 // ─── API Helpers ─────────────────────────────────────────────────
@@ -34,15 +34,23 @@ let cachedBookmarks = []; // Local cache to avoid API calls on every search keys
  */
 async function fetchBookmarks() {
   try {
-    const res = await fetch(API_BASE);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const url = API_BASE;
+    console.log("[ToolVault] Fetching bookmarks from:", url);
+    const res = await fetch(url);
+    console.log("[ToolVault] Response status:", res.status);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[ToolVault] API error response:", text);
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
     const data = await res.json();
+    console.log("[ToolVault] Loaded", data.length, "bookmarks");
     cachedBookmarks = data;
     return data;
   } catch (err) {
-    console.error('Failed to fetch bookmarks:', err);
-    showToast('Failed to load bookmarks');
-    return cachedBookmarks; // Return cache on failure
+    console.error("[ToolVault] Failed to fetch bookmarks:", err);
+    showToast("API error — check console (F12) for details");
+    return cachedBookmarks;
   }
 }
 
@@ -54,15 +62,15 @@ async function fetchBookmarks() {
 async function createBookmark(bookmark) {
   try {
     const res = await fetch(API_BASE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(bookmark),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
-    console.error('Failed to create bookmark:', err);
-    showToast('Failed to add tool');
+    console.error("Failed to create bookmark:", err);
+    showToast("Failed to add tool");
     return null;
   }
 }
@@ -76,15 +84,15 @@ async function createBookmark(bookmark) {
 async function updateBookmark(id, data) {
   try {
     const res = await fetch(`${API_BASE}/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
-    console.error('Failed to update bookmark:', err);
-    showToast('Failed to update tool');
+    console.error("Failed to update bookmark:", err);
+    showToast("Failed to update tool");
     return null;
   }
 }
@@ -96,12 +104,12 @@ async function updateBookmark(id, data) {
  */
 async function removeBookmark(id) {
   try {
-    const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_BASE}/${id}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return true;
   } catch (err) {
-    console.error('Failed to delete bookmark:', err);
-    showToast('Failed to delete tool');
+    console.error("Failed to delete bookmark:", err);
+    showToast("Failed to delete tool");
     return false;
   }
 }
@@ -118,13 +126,13 @@ function getFaviconUrl(url) {
     const domain = new URL(url).hostname;
     return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
   } catch {
-    return '';
+    return "";
   }
 }
 
 /** Escape HTML to prevent XSS */
 function escapeHtml(text) {
-  const div = document.createElement('div');
+  const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
 }
@@ -133,71 +141,74 @@ function escapeHtml(text) {
 
 function initDarkMode() {
   const saved = localStorage.getItem(THEME_KEY);
-  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.classList.add('dark');
+  if (
+    saved === "dark" ||
+    (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches)
+  ) {
+    document.documentElement.classList.add("dark");
     updateThemeIcons(true);
   } else {
-    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.remove("dark");
     updateThemeIcons(false);
   }
 }
 
 function toggleDarkMode() {
-  const isDark = document.documentElement.classList.toggle('dark');
-  localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
+  const isDark = document.documentElement.classList.toggle("dark");
+  localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
   updateThemeIcons(isDark);
 }
 
 function updateThemeIcons(isDark) {
   if (isDark) {
-    sunIcon.classList.remove('hidden');
-    moonIcon.classList.add('hidden');
+    sunIcon.classList.remove("hidden");
+    moonIcon.classList.add("hidden");
   } else {
-    sunIcon.classList.add('hidden');
-    moonIcon.classList.remove('hidden');
+    sunIcon.classList.add("hidden");
+    moonIcon.classList.remove("hidden");
   }
 }
 
 // ─── Toast Notification ──────────────────────────────────────────
 
 function showToast(message) {
-  const toast = document.getElementById('toast');
-  const toastMessage = document.getElementById('toastMessage');
+  const toast = document.getElementById("toast");
+  const toastMessage = document.getElementById("toastMessage");
   toastMessage.textContent = message;
-  toast.classList.remove('translate-y-4', 'opacity-0', 'pointer-events-none');
-  toast.classList.add('translate-y-0', 'opacity-100');
+  toast.classList.remove("translate-y-4", "opacity-0", "pointer-events-none");
+  toast.classList.add("translate-y-0", "opacity-100");
   setTimeout(() => {
-    toast.classList.add('translate-y-4', 'opacity-0', 'pointer-events-none');
-    toast.classList.remove('translate-y-0', 'opacity-100');
+    toast.classList.add("translate-y-4", "opacity-0", "pointer-events-none");
+    toast.classList.remove("translate-y-0", "opacity-100");
   }, 2500);
 }
 
 // ─── Modal Controls ──────────────────────────────────────────────
 
 function openModal(editMode = false) {
-  modal.classList.remove('hidden');
-  modal.classList.add('flex');
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
   requestAnimationFrame(() => {
-    modalContent.classList.remove('scale-95', 'opacity-0');
-    modalContent.classList.add('scale-100', 'opacity-100');
+    modalContent.classList.remove("scale-95", "opacity-0");
+    modalContent.classList.add("scale-100", "opacity-100");
   });
   if (editMode) {
-    modalTitle.textContent = 'Edit Tool';
-    submitBtnText.textContent = 'Save Changes';
+    modalTitle.textContent = "Edit Tool";
+    submitBtnText.textContent = "Save Changes";
   } else {
-    modalTitle.textContent = 'Add New Tool';
-    submitBtnText.textContent = 'Add Tool';
+    modalTitle.textContent = "Add New Tool";
+    submitBtnText.textContent = "Add Tool";
   }
 }
 
 function closeModal() {
-  modalContent.classList.remove('scale-100', 'opacity-100');
-  modalContent.classList.add('scale-95', 'opacity-0');
+  modalContent.classList.remove("scale-100", "opacity-100");
+  modalContent.classList.add("scale-95", "opacity-0");
   setTimeout(() => {
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
     bookmarkForm.reset();
-    editIdField.value = '';
+    editIdField.value = "";
   }, 200);
 }
 
@@ -210,10 +221,10 @@ function closeModal() {
 async function addBookmark(e) {
   e.preventDefault();
 
-  const name = document.getElementById('toolName').value.trim();
-  const url  = document.getElementById('toolUrl').value.trim();
-  const desc = document.getElementById('toolDesc').value.trim();
-  let logo   = document.getElementById('toolLogo').value.trim();
+  const name = document.getElementById("toolName").value.trim();
+  const url = document.getElementById("toolUrl").value.trim();
+  const desc = document.getElementById("toolDesc").value.trim();
+  let logo = document.getElementById("toolLogo").value.trim();
 
   if (!logo) {
     logo = getFaviconUrl(url);
@@ -223,12 +234,17 @@ async function addBookmark(e) {
 
   if (editId) {
     // ── Update existing ──
-    const result = await updateBookmark(editId, { name, url, description: desc, logo });
-    if (result) showToast('Tool updated successfully!');
+    const result = await updateBookmark(editId, {
+      name,
+      url,
+      description: desc,
+      logo,
+    });
+    if (result) showToast("Tool updated successfully!");
   } else {
     // ── Create new ──
     const result = await createBookmark({ name, url, description: desc, logo });
-    if (result) showToast('Tool added successfully!');
+    if (result) showToast("Tool added successfully!");
   }
 
   closeModal();
@@ -242,7 +258,7 @@ async function addBookmark(e) {
 async function deleteBookmark(id) {
   const success = await removeBookmark(id);
   if (success) {
-    showToast('Tool deleted.');
+    showToast("Tool deleted.");
     await renderBookmarks();
   }
 }
@@ -252,14 +268,14 @@ async function deleteBookmark(id) {
  * @param {string} id
  */
 function editBookmark(id) {
-  const bm = cachedBookmarks.find(b => b._id === id);
+  const bm = cachedBookmarks.find((b) => b._id === id);
   if (!bm) return;
 
   editIdField.value = bm._id;
-  document.getElementById('toolName').value = bm.name;
-  document.getElementById('toolUrl').value  = bm.url;
-  document.getElementById('toolDesc').value = bm.description || '';
-  document.getElementById('toolLogo').value = bm.logo || '';
+  document.getElementById("toolName").value = bm.name;
+  document.getElementById("toolUrl").value = bm.url;
+  document.getElementById("toolDesc").value = bm.description || "";
+  document.getElementById("toolLogo").value = bm.logo || "";
 
   openModal(true);
 }
@@ -269,17 +285,23 @@ function editBookmark(id) {
  * @param {string|null} id
  */
 function exportData(id) {
-  const data = id ? cachedBookmarks.filter(b => b._id === id) : cachedBookmarks;
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const data = id
+    ? cachedBookmarks.filter((b) => b._id === id)
+    : cachedBookmarks;
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
-  a.download = id ? `tool-${data[0]?.name || 'export'}.json` : 'toolvault-export.json';
+  a.download = id
+    ? `tool-${data[0]?.name || "export"}.json`
+    : "toolvault-export.json";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast('Data exported!');
+  showToast("Data exported!");
 }
 
 // ─── Rendering ───────────────────────────────────────────────────
@@ -290,40 +312,40 @@ function exportData(id) {
  * @param {string} filter - Search query (lowercased)
  * @param {boolean} useCache - If true, filter from cache instead of re-fetching
  */
-async function renderBookmarks(filter = '', useCache = false) {
+async function renderBookmarks(filter = "", useCache = false) {
   const bookmarks = useCache ? cachedBookmarks : await fetchBookmarks();
   const filtered = filter
-    ? bookmarks.filter(b => b.name.toLowerCase().includes(filter))
+    ? bookmarks.filter((b) => b.name.toLowerCase().includes(filter))
     : bookmarks;
 
   // Toggle empty state
   if (filtered.length === 0) {
-    emptyState.classList.remove('hidden');
-    emptyState.classList.add('flex');
-    bookmarksGrid.classList.add('hidden');
+    emptyState.classList.remove("hidden");
+    emptyState.classList.add("flex");
+    bookmarksGrid.classList.add("hidden");
   } else {
-    emptyState.classList.add('hidden');
-    emptyState.classList.remove('flex');
-    bookmarksGrid.classList.remove('hidden');
+    emptyState.classList.add("hidden");
+    emptyState.classList.remove("flex");
+    bookmarksGrid.classList.remove("hidden");
   }
 
-  bookmarksGrid.innerHTML = '';
+  bookmarksGrid.innerHTML = "";
 
   filtered.forEach((bm, i) => {
     const id = bm._id; // MongoDB _id
-    const card = document.createElement('div');
+    const card = document.createElement("div");
     card.className = [
-      'card-animate relative group',
-      'bg-white dark:bg-matte-800',
-      'rounded-2xl',
-      'border-2 border-slate-200/80 dark:border-matte-600/70',
-      'shadow-md shadow-slate-200/60 dark:shadow-matte-950/40',
-      'hover:shadow-[0_16px_48px_-8px_rgba(99,102,241,0.2)] dark:hover:shadow-[0_16px_48px_-8px_rgba(99,102,241,0.3)]',
-      'hover:border-brand-300/60 dark:hover:border-brand-500/40',
-      'hover:-translate-y-1.5',
-      'transition-all duration-300 ease-out',
-      'overflow-hidden',
-    ].join(' ');
+      "card-animate relative group",
+      "bg-white dark:bg-matte-800",
+      "rounded-2xl",
+      "border-2 border-slate-200/80 dark:border-matte-600/70",
+      "shadow-md shadow-slate-200/60 dark:shadow-matte-950/40",
+      "hover:shadow-[0_16px_48px_-8px_rgba(99,102,241,0.2)] dark:hover:shadow-[0_16px_48px_-8px_rgba(99,102,241,0.3)]",
+      "hover:border-brand-300/60 dark:hover:border-brand-500/40",
+      "hover:-translate-y-1.5",
+      "transition-all duration-300 ease-out",
+      "overflow-hidden",
+    ].join(" ");
     card.style.animationDelay = `${i * 0.04}s`;
 
     const logoSrc = bm.logo || getFaviconUrl(bm.url);
@@ -377,7 +399,7 @@ async function renderBookmarks(filter = '', useCache = false) {
         <h3 class="font-semibold text-slate-800 dark:text-matte-100 text-xs sm:text-sm mb-0.5 sm:mb-1 leading-tight truncate w-full">${escapeHtml(bm.name)}</h3>
 
         <!-- Description -->
-        <p class="text-[10px] sm:text-xs text-slate-500 dark:text-matte-400 leading-relaxed mb-3 sm:mb-4 line-clamp-2 min-h-[1.5rem] sm:min-h-[2rem]">${escapeHtml(bm.description || 'No description')}</p>
+        <p class="text-[10px] sm:text-xs text-slate-500 dark:text-matte-400 leading-relaxed mb-3 sm:mb-4 line-clamp-2 min-h-[1.5rem] sm:min-h-[2rem]">${escapeHtml(bm.description || "No description")}</p>
 
         <!-- Visit button -->
         <a
@@ -399,31 +421,40 @@ async function renderBookmarks(filter = '', useCache = false) {
 // ─── Dropdown Toggle ─────────────────────────────────────────────
 
 function toggleDropdown(id) {
-  document.querySelectorAll('[id^="dd-"]').forEach(el => {
-    if (el.id !== id) el.classList.add('hidden');
+  document.querySelectorAll('[id^="dd-"]').forEach((el) => {
+    if (el.id !== id) el.classList.add("hidden");
   });
   const dd = document.getElementById(id);
-  dd.classList.toggle('hidden');
+  dd.classList.toggle("hidden");
 }
 
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('[id^="dd-"]') && !e.target.closest('[onclick*="toggleDropdown"]')) {
-    document.querySelectorAll('[id^="dd-"]').forEach(el => el.classList.add('hidden'));
+document.addEventListener("click", (e) => {
+  if (
+    !e.target.closest('[id^="dd-"]') &&
+    !e.target.closest('[onclick*="toggleDropdown"]')
+  ) {
+    document
+      .querySelectorAll('[id^="dd-"]')
+      .forEach((el) => el.classList.add("hidden"));
   }
 });
 
 // ─── Event Listeners ─────────────────────────────────────────────
 
-darkModeToggle.addEventListener('click', toggleDarkMode);
-openModalBtn.addEventListener('click', () => openModal(false));
-closeModalBtn.addEventListener('click', closeModal);
-modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
-bookmarkForm.addEventListener('submit', addBookmark);
+darkModeToggle.addEventListener("click", toggleDarkMode);
+openModalBtn.addEventListener("click", () => openModal(false));
+closeModalBtn.addEventListener("click", closeModal);
+modal.addEventListener("click", (e) => {
+  if (e.target === modal) closeModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeModal();
+});
+bookmarkForm.addEventListener("submit", addBookmark);
 
 // Search with debounce — filters cached data to avoid API spam
 let searchTimeout;
-searchInput.addEventListener('input', (e) => {
+searchInput.addEventListener("input", (e) => {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(() => {
     renderBookmarks(e.target.value.toLowerCase().trim(), true);
