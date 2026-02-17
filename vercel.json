@@ -1,23 +1,6 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "index.html",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "script.js",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    { "src": "/api/bookmarks/(.+)", "dest": "/api/bookmarks/[id].js" },
-    { "src": "/api/bookmarks/?$", "dest": "/api/bookmarks/index.js" },
-    { "src": "/script.js", "dest": "/script.js" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/api/bookmarks", "destination": "/api/bookmarks/index" },
+    { "source": "/api/bookmarks/:id", "destination": "/api/bookmarks/[id]" }
   ]
 }
