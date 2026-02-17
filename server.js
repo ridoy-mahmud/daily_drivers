@@ -8,9 +8,15 @@ const { MongoClient, ObjectId } = require("mongodb");
 const cors = require("cors");
 const path = require("path");
 const dns = require("dns");
+const crypto = require("crypto");
 
 // Force Google Public DNS for SRV lookups (fixes ECONNREFUSED on some networks)
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
+// ─── Admin Authentication ────────────────────────────────────────
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "ridoy@gmail.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "123456";
+const activeSessions = new Set(); // store valid tokens in memory
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -156,10 +162,59 @@ app.use(express.json());
 // Serve static files (index.html, script.js, etc.)
 app.use(express.static(path.join(__dirname)));
 
+// ─── Auth Middleware ──────────────────────────────────────────────
+
+/**
+ * POST /api/login
+ * Validates admin credentials, returns a session token.
+ */
+app.post("/api/login", (req, res) => {
+  const { email, password } = req.body;
+  if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+    const token = crypto.randomBytes(32).toString("hex");
+    activeSessions.add(token);
+    console.log("🔑 Admin logged in");
+    return res.json({ token, message: "Login successful" });
+  }
+  return res.status(401).json({ error: "Invalid email or password" });
+});
+
+/**
+ * POST /api/logout
+ * Invalidates a session token.
+ */
+app.post("/api/logout", (req, res) => {
+  const token = (req.headers.authorization || "").replace("Bearer ", "");
+  activeSessions.delete(token);
+  res.json({ message: "Logged out" });
+});
+
+/**
+ * GET /api/auth/check
+ * Checks if current token is valid.
+ */
+app.get("/api/auth/check", (req, res) => {
+  const token = (req.headers.authorization || "").replace("Bearer ", "");
+  res.json({ authenticated: activeSessions.has(token) });
+});
+
+/**
+ * Auth middleware — protects routes that modify data.
+ */
+function requireAuth(req, res, next) {
+  const token = (req.headers.authorization || "").replace("Bearer ", "");
+  if (!token || !activeSessions.has(token)) {
+    return res
+      .status(401)
+      .json({ error: "Unauthorized — admin login required" });
+  }
+  next();
+}
+
 // ─── API Routes ──────────────────────────────────────────────────
 
 /**
- * GET /api/bookmarks
+ * GET /api/bookmarks (public)
  * Returns all bookmarks sorted by creation order.
  */
 app.get("/api/bookmarks", async (req, res) => {
@@ -176,7 +231,7 @@ app.get("/api/bookmarks", async (req, res) => {
  * POST /api/bookmarks
  * Create a new bookmark. Body: { name, url, description, logo }
  */
-app.post("/api/bookmarks", async (req, res) => {
+app.post("/api/bookmarks", requireAuth, async (req, res) => {
   try {
     const { name, url, description, logo } = req.body;
     if (!name || !url) {
@@ -200,7 +255,7 @@ app.post("/api/bookmarks", async (req, res) => {
  * PUT /api/bookmarks/:id
  * Update an existing bookmark. Body: { name, url, description, logo }
  */
-app.put("/api/bookmarks/:id", async (req, res) => {
+app.put("/api/bookmarks/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, url, description, logo } = req.body;
@@ -233,7 +288,7 @@ app.put("/api/bookmarks/:id", async (req, res) => {
  * DELETE /api/bookmarks/:id
  * Delete a bookmark by its MongoDB _id.
  */
-app.delete("/api/bookmarks/:id", async (req, res) => {
+app.delete("/api/bookmarks/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await bookmarksCollection.deleteOne({

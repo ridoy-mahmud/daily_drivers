@@ -2,9 +2,11 @@
  * ToolVault — Bookmark Manager (MongoDB-backed)
  * Frontend JavaScript — communicates with Express REST API.
  * Dark mode preference stays in localStorage (client-side only).
+ * Admin auth uses session tokens stored in localStorage.
  */
 
 const API_BASE = "/api/bookmarks";
+const AUTH_TOKEN_KEY = "toolvault_admin_token";
 
 // ─── DOM References ──────────────────────────────────────────────
 const bookmarksGrid = document.getElementById("bookmarksGrid");
@@ -22,50 +24,186 @@ const darkModeToggle = document.getElementById("darkModeToggle");
 const sunIcon = document.getElementById("sunIcon");
 const moonIcon = document.getElementById("moonIcon");
 
+// Auth DOM
+const authToggleBtn = document.getElementById("authToggleBtn");
+const loginIcon = document.getElementById("loginIcon");
+const loggedInIcon = document.getElementById("loggedInIcon");
+const authDot = document.getElementById("authDot");
+const loginModal = document.getElementById("loginModal");
+const loginModalContent = document.getElementById("loginModalContent");
+const closeLoginModalBtn = document.getElementById("closeLoginModalBtn");
+const loginForm = document.getElementById("loginForm");
+const loginError = document.getElementById("loginError");
+
 // ─── State ───────────────────────────────────────────────────────
 const THEME_KEY = "toolvault_theme";
-let cachedBookmarks = []; // Local cache to avoid API calls on every search keystroke
+let cachedBookmarks = [];
+let isAdmin = false;
+
+// ─── Auth Helpers ────────────────────────────────────────────────
+
+function getToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+}
+
+function setToken(token) {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+function clearToken() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+/** Return headers object with Authorization if logged in */
+function authHeaders(extra = {}) {
+  const headers = { "Content-Type": "application/json", ...extra };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+/** Update UI to reflect admin state */
+function updateAuthUI() {
+  if (isAdmin) {
+    loginIcon.classList.add("hidden");
+    loggedInIcon.classList.remove("hidden");
+    authDot.classList.remove("hidden");
+    openModalBtn.classList.remove("hidden");
+    openModalBtn.classList.add("flex");
+    authToggleBtn.setAttribute("aria-label", "Logout");
+  } else {
+    loginIcon.classList.remove("hidden");
+    loggedInIcon.classList.add("hidden");
+    authDot.classList.add("hidden");
+    openModalBtn.classList.add("hidden");
+    openModalBtn.classList.remove("flex");
+    authToggleBtn.setAttribute("aria-label", "Admin login");
+  }
+}
+
+/** Check if saved token is still valid */
+async function checkAuth() {
+  const token = getToken();
+  if (!token) {
+    isAdmin = false;
+    updateAuthUI();
+    return;
+  }
+  try {
+    const res = await fetch("/api/auth/check", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    isAdmin = data.authenticated === true;
+  } catch {
+    isAdmin = false;
+  }
+  if (!isAdmin) clearToken();
+  updateAuthUI();
+}
+
+/** Login handler */
+async function handleLogin(e) {
+  e.preventDefault();
+  loginError.classList.add("hidden");
+
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      loginError.textContent = data.error || "Login failed";
+      loginError.classList.remove("hidden");
+      return;
+    }
+
+    setToken(data.token);
+    isAdmin = true;
+    updateAuthUI();
+    closeLoginModal();
+    showToast("Logged in as Admin ✓");
+    renderBookmarks(); // re-render to show edit/delete controls
+  } catch (err) {
+    loginError.textContent = "Network error — please try again";
+    loginError.classList.remove("hidden");
+  }
+}
+
+/** Logout handler */
+async function handleLogout() {
+  try {
+    await fetch("/api/logout", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+  } catch {
+    // ignore
+  }
+  clearToken();
+  isAdmin = false;
+  updateAuthUI();
+  showToast("Logged out");
+  renderBookmarks(); // re-render to hide edit/delete controls
+}
+
+// ─── Login Modal Controls ────────────────────────────────────────
+
+function openLoginModal() {
+  loginError.classList.add("hidden");
+  loginForm.reset();
+  loginModal.classList.remove("hidden");
+  loginModal.classList.add("flex");
+  requestAnimationFrame(() => {
+    loginModalContent.classList.remove("scale-95", "opacity-0");
+    loginModalContent.classList.add("scale-100", "opacity-100");
+  });
+}
+
+function closeLoginModal() {
+  loginModalContent.classList.remove("scale-100", "opacity-100");
+  loginModalContent.classList.add("scale-95", "opacity-0");
+  setTimeout(() => {
+    loginModal.classList.add("hidden");
+    loginModal.classList.remove("flex");
+    loginForm.reset();
+    loginError.classList.add("hidden");
+  }, 200);
+}
 
 // ─── API Helpers ─────────────────────────────────────────────────
 
-/**
- * Fetch all bookmarks from the server.
- * @returns {Promise<Array>} Array of bookmark objects
- */
 async function fetchBookmarks() {
   try {
-    const url = API_BASE;
-    console.log("[ToolVault] Fetching bookmarks from:", url);
-    const res = await fetch(url);
-    console.log("[ToolVault] Response status:", res.status);
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("[ToolVault] API error response:", text);
-      throw new Error(`HTTP ${res.status}: ${text}`);
-    }
+    const res = await fetch(API_BASE);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    console.log("[ToolVault] Loaded", data.length, "bookmarks");
     cachedBookmarks = data;
     return data;
   } catch (err) {
-    console.error("[ToolVault] Failed to fetch bookmarks:", err);
-    showToast("API error — check console (F12) for details");
+    console.error("Failed to fetch bookmarks:", err);
+    showToast("API error — check console (F12)");
     return cachedBookmarks;
   }
 }
 
-/**
- * Create a new bookmark on the server.
- * @param {Object} bookmark - { name, url, description, logo }
- * @returns {Promise<Object|null>}
- */
 async function createBookmark(bookmark) {
   try {
     const res = await fetch(API_BASE, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify(bookmark),
     });
+    if (res.status === 401) {
+      showToast("Unauthorized — please login first");
+      return null;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -75,19 +213,17 @@ async function createBookmark(bookmark) {
   }
 }
 
-/**
- * Update a bookmark on the server.
- * @param {string} id - MongoDB _id
- * @param {Object} data - Fields to update
- * @returns {Promise<Object|null>}
- */
 async function updateBookmark(id, data) {
   try {
     const res = await fetch(`${API_BASE}/${id}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify(data),
     });
+    if (res.status === 401) {
+      showToast("Unauthorized — please login first");
+      return null;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -97,14 +233,16 @@ async function updateBookmark(id, data) {
   }
 }
 
-/**
- * Delete a bookmark on the server.
- * @param {string} id - MongoDB _id
- * @returns {Promise<boolean>}
- */
 async function removeBookmark(id) {
   try {
-    const res = await fetch(`${API_BASE}/${id}`, { method: "DELETE" });
+    const res = await fetch(`${API_BASE}/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    if (res.status === 401) {
+      showToast("Unauthorized — please login first");
+      return false;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return true;
   } catch (err) {
@@ -116,11 +254,6 @@ async function removeBookmark(id) {
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-/**
- * Build a fallback logo URL from a website domain.
- * @param {string} url
- * @returns {string}
- */
 function getFaviconUrl(url) {
   try {
     const domain = new URL(url).hostname;
@@ -130,7 +263,6 @@ function getFaviconUrl(url) {
   }
 }
 
-/** Escape HTML to prevent XSS */
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
@@ -212,12 +344,8 @@ function closeModal() {
   }, 200);
 }
 
-// ─── CRUD Operations (async, API-backed) ─────────────────────────
+// ─── CRUD Operations ─────────────────────────────────────────────
 
-/**
- * Add a new bookmark or update an existing one.
- * Called on form submission.
- */
 async function addBookmark(e) {
   e.preventDefault();
 
@@ -226,14 +354,11 @@ async function addBookmark(e) {
   const desc = document.getElementById("toolDesc").value.trim();
   let logo = document.getElementById("toolLogo").value.trim();
 
-  if (!logo) {
-    logo = getFaviconUrl(url);
-  }
+  if (!logo) logo = getFaviconUrl(url);
 
   const editId = editIdField.value;
 
   if (editId) {
-    // ── Update existing ──
     const result = await updateBookmark(editId, {
       name,
       url,
@@ -242,7 +367,6 @@ async function addBookmark(e) {
     });
     if (result) showToast("Tool updated successfully!");
   } else {
-    // ── Create new ──
     const result = await createBookmark({ name, url, description: desc, logo });
     if (result) showToast("Tool added successfully!");
   }
@@ -251,10 +375,6 @@ async function addBookmark(e) {
   await renderBookmarks();
 }
 
-/**
- * Delete a bookmark by its MongoDB _id.
- * @param {string} id
- */
 async function deleteBookmark(id) {
   const success = await removeBookmark(id);
   if (success) {
@@ -263,10 +383,6 @@ async function deleteBookmark(id) {
   }
 }
 
-/**
- * Populate the modal form for editing.
- * @param {string} id
- */
 function editBookmark(id) {
   const bm = cachedBookmarks.find((b) => b._id === id);
   if (!bm) return;
@@ -280,10 +396,6 @@ function editBookmark(id) {
   openModal(true);
 }
 
-/**
- * Export a single bookmark (or all) as a JSON file download.
- * @param {string|null} id
- */
 function exportData(id) {
   const data = id
     ? cachedBookmarks.filter((b) => b._id === id)
@@ -306,19 +418,12 @@ function exportData(id) {
 
 // ─── Rendering ───────────────────────────────────────────────────
 
-/**
- * Render bookmarks into the grid.
- * Fetches fresh data from the API (unless filtering cached data).
- * @param {string} filter - Search query (lowercased)
- * @param {boolean} useCache - If true, filter from cache instead of re-fetching
- */
 async function renderBookmarks(filter = "", useCache = false) {
   const bookmarks = useCache ? cachedBookmarks : await fetchBookmarks();
   const filtered = filter
     ? bookmarks.filter((b) => b.name.toLowerCase().includes(filter))
     : bookmarks;
 
-  // Toggle empty state
   if (filtered.length === 0) {
     emptyState.classList.remove("hidden");
     emptyState.classList.add("flex");
@@ -332,7 +437,7 @@ async function renderBookmarks(filter = "", useCache = false) {
   bookmarksGrid.innerHTML = "";
 
   filtered.forEach((bm, i) => {
-    const id = bm._id; // MongoDB _id
+    const id = bm._id;
     const card = document.createElement("div");
     card.className = [
       "card-animate relative group",
@@ -351,11 +456,9 @@ async function renderBookmarks(filter = "", useCache = false) {
     const logoSrc = bm.logo || getFaviconUrl(bm.url);
     const fallbackSrc = getFaviconUrl(bm.url);
 
-    card.innerHTML = `
-      <!-- Accent gradient bar -->
-      <div class="h-1 w-full bg-gradient-to-r from-brand-400 via-brand-500 to-brand-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-      <!-- Three-dot menu -->
+    // Admin-only menu (three-dot + dropdown)
+    const adminMenu = isAdmin
+      ? `
       <div class="absolute top-3 right-2 sm:right-3 z-10">
         <button
           onclick="toggleDropdown('dd-${id}')"
@@ -364,8 +467,6 @@ async function renderBookmarks(filter = "", useCache = false) {
         >
           <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="4" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="10" cy="16" r="1.5"/></svg>
         </button>
-
-        <!-- Dropdown -->
         <div id="dd-${id}" class="hidden dropdown-animate absolute right-0 mt-1 w-36 sm:w-40 bg-white dark:bg-matte-800 rounded-xl shadow-xl border-2 border-slate-200 dark:border-matte-600 py-1.5 z-20">
           <button onclick="editBookmark('${id}')" class="w-full flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-700 dark:text-matte-200 hover:bg-brand-50 dark:hover:bg-brand-900/20 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
             <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
@@ -381,7 +482,14 @@ async function renderBookmarks(filter = "", useCache = false) {
             Delete
           </button>
         </div>
-      </div>
+      </div>`
+      : "";
+
+    card.innerHTML = `
+      <!-- Accent gradient bar -->
+      <div class="h-1 w-full bg-gradient-to-r from-brand-400 via-brand-500 to-brand-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+
+      ${adminMenu}
 
       <!-- Card body -->
       <div class="px-3 sm:px-5 pt-5 sm:pt-6 pb-4 sm:pb-5 flex flex-col items-center text-center">
@@ -447,12 +555,31 @@ closeModalBtn.addEventListener("click", closeModal);
 modal.addEventListener("click", (e) => {
   if (e.target === modal) closeModal();
 });
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeModal();
-});
 bookmarkForm.addEventListener("submit", addBookmark);
 
-// Search with debounce — filters cached data to avoid API spam
+// Auth events
+authToggleBtn.addEventListener("click", () => {
+  if (isAdmin) {
+    handleLogout();
+  } else {
+    openLoginModal();
+  }
+});
+closeLoginModalBtn.addEventListener("click", closeLoginModal);
+loginModal.addEventListener("click", (e) => {
+  if (e.target === loginModal) closeLoginModal();
+});
+loginForm.addEventListener("submit", handleLogin);
+
+// Escape key closes any open modal
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    closeModal();
+    closeLoginModal();
+  }
+});
+
+// Search with debounce
 let searchTimeout;
 searchInput.addEventListener("input", (e) => {
   clearTimeout(searchTimeout);
@@ -463,4 +590,4 @@ searchInput.addEventListener("input", (e) => {
 
 // ─── Initialize ──────────────────────────────────────────────────
 initDarkMode();
-renderBookmarks();
+checkAuth().then(() => renderBookmarks());
